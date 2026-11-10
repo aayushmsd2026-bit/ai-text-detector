@@ -64,7 +64,10 @@ def exported(tmp_path_factory):
 
 def test_onnx_matches_pytorch(exported):
     out, tok, obs, perf = exported
-    ids = tok(TEXT, add_special_tokens=False)["input_ids"]
+    from tokenizers import Tokenizer
+
+    # The shipped tokenizer.json is what both the browser and Python use.
+    ids = Tokenizer.from_file(str(out / "tokenizer.json")).encode(TEXT, add_special_tokens=False).ids
     with torch.no_grad():
         lp_ref, xp_ref = Binoculars(obs, perf)(torch.tensor([ids]))
     scores = BinocularsScorer(out).score(TEXT)
@@ -99,8 +102,11 @@ def test_browser_code_matches_python(exported):
       const s = await det.score({json.dumps(TEXT)});
       console.log(JSON.stringify({{ lp: Array.from(s.lp), xp: Array.from(s.xp), offsets: s.offsets }}));
     """
-    res = subprocess.run(["node", "--input-type=module", "-e", script], cwd=JS_DEPS,
-                         capture_output=True, text=True)
+    # Run from a file inside JS_DEPS so bare imports resolve (and worker threads
+    # don't inherit an --eval flag).
+    script_path = Path(JS_DEPS) / "parity_check.mjs"
+    script_path.write_text(script)
+    res = subprocess.run(["node", str(script_path)], cwd=JS_DEPS, capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
     js = json.loads(res.stdout.strip().splitlines()[-1])
     np.testing.assert_allclose(js["lp"], py.log_ppl, rtol=1e-4, atol=1e-4)

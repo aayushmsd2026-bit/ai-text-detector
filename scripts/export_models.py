@@ -50,6 +50,26 @@ class Binoculars(torch.nn.Module):
         return log_ppl, x_ppl
 
 
+TOKENIZER_FILES = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "config.json"]
+
+
+def copy_tokenizer_files(src: str, out: Path) -> None:
+    if Path(src).is_dir():
+        for name in TOKENIZER_FILES:
+            if (Path(src) / name).exists():
+                shutil.copy(Path(src) / name, out / name)
+    else:
+        from huggingface_hub import hf_hub_download
+
+        for name in TOKENIZER_FILES:
+            try:
+                shutil.copy(hf_hub_download(src, name), out / name)
+            except Exception:  # optional file not in this repo
+                pass
+    if not (out / "tokenizer.json").exists():
+        raise SystemExit(f"{src} has no tokenizer.json; pick models with a fast tokenizer.")
+
+
 def load(name_or_model):
     if isinstance(name_or_model, torch.nn.Module):
         model = name_or_model
@@ -71,10 +91,13 @@ def export(observer, performer, out: Path, tokenizer_src: str | None = None,
     tok = AutoTokenizer.from_pretrained(tok_src)
     if isinstance(performer, str) and AutoTokenizer.from_pretrained(performer).get_vocab() != tok.get_vocab():
         raise SystemExit("Observer and performer must share a tokenizer.")
-    tok.save_pretrained(out)
-    # Transformers.js needs config.json next to the tokenizer to identify the model type.
-    cfg = observer.config if isinstance(observer, torch.nn.Module) else AutoConfig.from_pretrained(observer)
-    cfg.save_pretrained(out)
+    # Copy the original tokenizer files byte for byte (re-saving through
+    # transformers can change them). The browser and Python both read these.
+    copy_tokenizer_files(tok_src, out)
+    if not (out / "config.json").exists():
+        # Transformers.js reads config.json next to the tokenizer.
+        cfg = observer.config if isinstance(observer, torch.nn.Module) else AutoConfig.from_pretrained(observer)
+        cfg.save_pretrained(out)
 
     model = Binoculars(load(observer), load(performer))
     dummy = torch.tensor([tok("Hello there, this is a short example sentence.")["input_ids"]])

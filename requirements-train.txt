@@ -7,3 +7,4 @@ onnx>=1.16
 anthropic>=0.75
 datasets>=2.20
 pytest>=8.0
+huggingface_hub>=0.25
