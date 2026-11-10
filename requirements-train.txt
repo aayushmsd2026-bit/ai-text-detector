@@ -1,0 +1,4 @@
+-r requirements.txt
+anthropic>=0.75
+datasets>=2.20
+pytest>=8.0
