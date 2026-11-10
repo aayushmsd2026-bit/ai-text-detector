@@ -38,8 +38,11 @@ class Binoculars(torch.nn.Module):
         self.observer, self.performer = observer, performer
 
     def forward(self, input_ids):
-        obs = self.observer(input_ids=input_ids, use_cache=False).logits[0, :-1].float()
-        perf = self.performer(input_ids=input_ids, use_cache=False).logits[0, :-1].float()
+        # An explicit all-ones mask keeps transformers off its packed-sequence
+        # detection path, which uses an operator ONNX can't export (aten::diff).
+        mask = torch.ones_like(input_ids)
+        obs = self.observer(input_ids=input_ids, attention_mask=mask, use_cache=False).logits[0, :-1].float()
+        perf = self.performer(input_ids=input_ids, attention_mask=mask, use_cache=False).logits[0, :-1].float()
         perf_logp = torch.log_softmax(perf, dim=-1)
         targets = input_ids[0, 1:]
         log_ppl = -perf_logp.gather(-1, targets[:, None]).squeeze(-1)
@@ -49,8 +52,15 @@ class Binoculars(torch.nn.Module):
 
 def load(name_or_model):
     if isinstance(name_or_model, torch.nn.Module):
-        return name_or_model.eval()
-    return AutoModelForCausalLM.from_pretrained(name_or_model, torch_dtype=torch.float32).eval()
+        model = name_or_model
+    else:
+        model = AutoModelForCausalLM.from_pretrained(name_or_model, dtype=torch.float32)
+    # Plain attention exports most reliably to ONNX.
+    if hasattr(model, "set_attn_implementation"):
+        model.set_attn_implementation("eager")
+    else:
+        model.config._attn_implementation = "eager"
+    return model.eval()
 
 
 def export(observer, performer, out: Path, tokenizer_src: str | None = None,
