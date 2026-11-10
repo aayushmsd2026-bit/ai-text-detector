@@ -62,7 +62,8 @@ with gr.Blocks(title="AI Text Detector") as demo:
             btn = gr.Button("Analyze", variant="primary")
         with gr.Column():
             out_summary = gr.Markdown()
-            out_hl = gr.HighlightedText(label="Sentence view", combine_adjacent=False,
+            out_hl = gr.HighlightedText(label="Sentence view", combine_adjacent=False, show_legend=True,
+                                        show_inline_category=False,
                                         color_map={"AI-like": "red", "Mixed": "orange", "Human-like": "green"})
             out_feats = gr.JSON(label="Key signals")
             with gr.Accordion("Full report (JSON)", open=False):
