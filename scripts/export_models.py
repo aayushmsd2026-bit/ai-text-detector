@@ -103,11 +103,14 @@ def export(observer, performer, out: Path, tokenizer_src: str | None = None,
     dummy = torch.tensor([tok("Hello there, this is a short example sentence.")["input_ids"]])
     with tempfile.TemporaryDirectory() as tmp:
         fp32 = Path(tmp) / "fp32.onnx"
-        torch.onnx.export(
-            model, (dummy,), str(fp32), input_names=["input_ids"], output_names=["log_ppl", "x_ppl"],
-            dynamic_axes={"input_ids": {1: "seq"}, "log_ppl": {0: "seq_m1"}, "x_ppl": {0: "seq_m1"}},
-            opset_version=17, dynamo=False,
+        # The torch.export-based exporter keeps the sequence length symbolic;
+        # the older tracer bakes the example's length into the graph.
+        seq = torch.export.Dim("seq", min=2, max=8192)
+        program = torch.onnx.export(
+            model, (dummy,), input_names=["input_ids"], output_names=["log_ppl", "x_ppl"],
+            dynamic_shapes={"input_ids": {1: seq}}, opset_version=18, dynamo=True,
         )
+        program.save(str(fp32), external_data=False)
         final = out / "binoculars.onnx"
         if quantize:
             from onnxruntime.quantization import QuantType, quantize_dynamic

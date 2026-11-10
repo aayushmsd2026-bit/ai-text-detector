@@ -29,7 +29,7 @@ jobs:
           node-version: "22"
       - run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt transformers onnx huggingface_hub pytest
+          pip install -r requirements.txt transformers onnx onnxscript huggingface_hub pytest
       - name: Install the browser libraries the site uses (same versions)
         run: |
           mkdir -p /tmp/jsdeps && cd /tmp/jsdeps && npm init -y >/dev/null

@@ -71,6 +71,8 @@ def test_onnx_matches_pytorch(exported):
     with torch.no_grad():
         lp_ref, xp_ref = Binoculars(obs, perf)(torch.tensor([ids]))
     scores = BinocularsScorer(out).score(TEXT)
+    # Must differ from the export's example length, to prove the length isn't baked in.
+    assert len(ids) != 11
     assert len(scores.log_ppl) == len(ids) - 1
     np.testing.assert_allclose(scores.log_ppl, lp_ref.numpy(), rtol=1e-4, atol=1e-4)
     np.testing.assert_allclose(scores.x_ppl, xp_ref.numpy(), rtol=1e-4, atol=1e-4)

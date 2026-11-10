@@ -3,6 +3,7 @@
 torch>=2.3
 transformers>=4.44
 onnx>=1.16
+onnxscript>=0.3
 # Collecting training data
 anthropic>=0.75
 datasets>=2.20

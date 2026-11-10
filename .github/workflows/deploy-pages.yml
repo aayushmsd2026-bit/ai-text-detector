@@ -43,7 +43,7 @@ jobs:
         if: steps.models.outputs.cache-hit != 'true'
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install transformers onnx onnxruntime huggingface_hub
+          pip install transformers onnx onnxscript onnxruntime huggingface_hub
           python scripts/export_models.py --out site/models
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
