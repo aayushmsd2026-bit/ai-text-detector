@@ -20,6 +20,8 @@ transformers = pytest.importorskip("transformers")
 from detector.lm_scores import BinocularsScorer  # noqa: E402
 from scripts.export_models import Binoculars, export  # noqa: E402
 
+pytestmark = pytest.mark.real_models
+
 SITE_JS = Path(__file__).resolve().parent.parent / "site" / "js"
 # Directory containing node_modules with onnxruntime-web and @huggingface/transformers.
 JS_DEPS = os.environ.get("JS_DEPS")

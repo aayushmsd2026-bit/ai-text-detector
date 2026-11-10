@@ -28,5 +28,12 @@ def fake_score(self, text):
 
 
 @pytest.fixture(autouse=True)
-def no_models(monkeypatch):
+def no_models(request, monkeypatch):
+    """Use the fake scorer everywhere except tests marked real_models."""
+    if request.node.get_closest_marker("real_models"):
+        return
     monkeypatch.setattr(BinocularsScorer, "score", fake_score)
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_models: run the real ONNX scorer instead of the fake one")
