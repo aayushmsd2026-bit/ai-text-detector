@@ -1,0 +1,108 @@
+"""Convert the two language models into one browser-ready ONNX file.
+
+The output graph takes `input_ids` and returns, for every position after the
+first, the two Binoculars ingredients:
+
+    log_ppl[t] = -log P_performer(token[t+1])
+    x_ppl[t]   = -sum_v P_observer(v) * log P_performer(v)
+
+Putting both models in one graph means the browser downloads a single file
+and never has to move vocabulary-sized logits around, and the training job
+(Python, onnxruntime) runs the exact same computation as the website.
+
+    python scripts/export_models.py --out site/models
+    OBSERVER_MODEL=... PERFORMER_MODEL=... python scripts/export_models.py
+
+Writes binoculars.onnx (int8-quantised), tokenizer files and meta.json.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import tempfile
+from pathlib import Path
+
+import torch
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+DEFAULT_OBSERVER = "HuggingFaceTB/SmolLM2-135M"
+DEFAULT_PERFORMER = "HuggingFaceTB/SmolLM2-135M-Instruct"
+
+
+class Binoculars(torch.nn.Module):
+    def __init__(self, observer, performer):
+        super().__init__()
+        self.observer, self.performer = observer, performer
+
+    def forward(self, input_ids):
+        obs = self.observer(input_ids=input_ids, use_cache=False).logits[0, :-1].float()
+        perf = self.performer(input_ids=input_ids, use_cache=False).logits[0, :-1].float()
+        perf_logp = torch.log_softmax(perf, dim=-1)
+        targets = input_ids[0, 1:]
+        log_ppl = -perf_logp.gather(-1, targets[:, None]).squeeze(-1)
+        x_ppl = -(torch.softmax(obs, dim=-1) * perf_logp).sum(-1)
+        return log_ppl, x_ppl
+
+
+def load(name_or_model):
+    if isinstance(name_or_model, torch.nn.Module):
+        return name_or_model.eval()
+    return AutoModelForCausalLM.from_pretrained(name_or_model, torch_dtype=torch.float32).eval()
+
+
+def export(observer, performer, out: Path, tokenizer_src: str | None = None,
+           names: tuple[str, str] | None = None, quantize: bool = True) -> Path:
+    """Export the pair. `observer`/`performer` may be model ids or loaded models (tests)."""
+    out.mkdir(parents=True, exist_ok=True)
+    tok_src = tokenizer_src or observer
+    tok = AutoTokenizer.from_pretrained(tok_src)
+    if isinstance(performer, str) and AutoTokenizer.from_pretrained(performer).get_vocab() != tok.get_vocab():
+        raise SystemExit("Observer and performer must share a tokenizer.")
+    tok.save_pretrained(out)
+    # Transformers.js needs config.json next to the tokenizer to identify the model type.
+    cfg = observer.config if isinstance(observer, torch.nn.Module) else AutoConfig.from_pretrained(observer)
+    cfg.save_pretrained(out)
+
+    model = Binoculars(load(observer), load(performer))
+    dummy = torch.tensor([tok("Hello there, this is a short example sentence.")["input_ids"]])
+    with tempfile.TemporaryDirectory() as tmp:
+        fp32 = Path(tmp) / "fp32.onnx"
+        torch.onnx.export(
+            model, (dummy,), str(fp32), input_names=["input_ids"], output_names=["log_ppl", "x_ppl"],
+            dynamic_axes={"input_ids": {1: "seq"}, "log_ppl": {0: "seq_m1"}, "x_ppl": {0: "seq_m1"}},
+            opset_version=17, dynamo=False,
+        )
+        final = out / "binoculars.onnx"
+        if quantize:
+            from onnxruntime.quantization import QuantType, quantize_dynamic
+            quantize_dynamic(str(fp32), str(final), weight_type=QuantType.QUInt8)
+        else:
+            shutil.copy(fp32, final)
+
+    import hashlib
+    sha = hashlib.sha256(final.read_bytes()).hexdigest()[:16]
+    obs_name, perf_name = names or (str(observer), str(performer))
+    (out / "meta.json").write_text(json.dumps({
+        "observer": obs_name, "performer": perf_name, "quantized": quantize, "sha256": sha,
+        "size_mb": round(final.stat().st_size / 1e6, 1),
+    }, indent=2))
+    print(f"Wrote {final} ({final.stat().st_size / 1e6:.0f} MB)")
+    return final
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--observer", default=os.environ.get("OBSERVER_MODEL") or DEFAULT_OBSERVER)
+    ap.add_argument("--performer", default=os.environ.get("PERFORMER_MODEL") or DEFAULT_PERFORMER)
+    ap.add_argument("--out", default="site/models")
+    ap.add_argument("--no-quantize", action="store_true")
+    args = ap.parse_args()
+    export(args.observer, args.performer, Path(args.out), quantize=not args.no_quantize,
+           names=(args.observer, args.performer))
+
+
+if __name__ == "__main__":
+    main()

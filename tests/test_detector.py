@@ -27,7 +27,7 @@ def test_style_features_differ():
 
 
 def test_uncalibrated_detector(tmp_path):
-    det = Detector(model_path=tmp_path / "missing.joblib")
+    det = Detector(classifier_path=tmp_path / "missing.json")
     ra, rh = det.analyze(AI), det.analyze(HUMAN)
     assert ra.ai_probability > rh.ai_probability
     assert not ra.calibrated and any("uncalibrated" in w for w in ra.warnings)
@@ -36,7 +36,7 @@ def test_uncalibrated_detector(tmp_path):
 
 
 def test_short_text_warning(tmp_path):
-    r = Detector(model_path=tmp_path / "x").analyze("Too short to judge.")
+    r = Detector(classifier_path=tmp_path / "x").analyze("Too short to judge.")
     assert any("unreliable" in w for w in r.warnings)
 
 
@@ -52,14 +52,13 @@ def test_training_end_to_end(tmp_path, monkeypatch):
             rng.shuffle(sents)
             (data / sub / f"src__{i}.txt").write_text(". ".join(sents))
     monkeypatch.setattr(train, "DATA", data)
-    monkeypatch.setattr(train, "CACHE", data / "features.csv")
     monkeypatch.setattr(train, "REPORTS", tmp_path / "reports")
-    monkeypatch.setattr(train, "MODEL_PATH", tmp_path / "model" / "clf.joblib")
+    monkeypatch.setattr(train, "MODEL_OUT", tmp_path / "model.json")
     monkeypatch.setattr("sys.argv", ["train.py"])
     train.main()
 
     metrics = json.loads((tmp_path / "reports" / "metrics.json").read_text())
     assert metrics["auc"] > 0.9
-    det = Detector(model_path=tmp_path / "model" / "clf.joblib")
+    det = Detector(classifier_path=tmp_path / "model.json")
     assert det.analyze(AI).ai_probability > det.analyze(HUMAN).ai_probability
     assert det.analyze(AI).calibrated

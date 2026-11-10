@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Text Detector</title>
+<meta name="description" content="Open-source AI text detector that runs entirely in your browser. Your text never leaves your device.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="wrap">
+  <h1>AI Text Detector</h1>
+  <p class="lede">Estimates how likely a document is to be AI-written. Runs entirely in your browser:
+    <strong>your text never leaves your device.</strong></p>
+</header>
+
+<main class="wrap grid">
+  <section class="card input">
+    <label for="text" class="label">Text</label>
+    <textarea id="text" placeholder="Paste at least ~150 words for a meaningful result"></textarea>
+    <div class="row">
+      <label class="file">
+        <input type="file" id="file" accept=".txt,.md,.docx,.pdf">
+        <span>Upload .txt, .md, .docx or .pdf</span>
+      </label>
+      <span id="count" class="muted">0 words</span>
+    </div>
+    <button id="analyze" class="primary">Analyze</button>
+    <div id="progress" class="progress" hidden>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <span id="progress-text" class="muted"></span>
+    </div>
+    <p id="error" class="error" hidden></p>
+  </section>
+
+  <section class="card output" id="output" aria-live="polite">
+    <div id="empty" class="empty">
+      <p>Results appear here.</p>
+      <p class="muted">The first analysis downloads the detection model (shown below); later visits load it from your browser's cache.</p>
+    </div>
+    <div id="result" hidden>
+      <div class="score">
+        <span id="pct" class="pct"></span>
+        <div>
+          <div id="label" class="verdict"></div>
+          <div id="calib" class="muted small"></div>
+        </div>
+      </div>
+      <div id="meter" class="meter"><div id="meter-fill"></div></div>
+      <ul id="warnings" class="warnings"></ul>
+
+      <h2>Sentence view</h2>
+      <div class="legend small">
+        <span><i class="sw ai"></i>AI-like</span><span><i class="sw mixed"></i>Mixed</span>
+        <span><i class="sw human"></i>Human-like</span><span><i class="sw none"></i>Too short to judge</span>
+      </div>
+      <div id="sentences" class="sentences"></div>
+
+      <h2>Key signals</h2>
+      <table id="signals" class="signals"></table>
+      <details>
+        <summary>Full report (JSON)</summary>
+        <button id="download" class="ghost small">Download report</button>
+        <pre id="json"></pre>
+      </details>
+    </div>
+  </section>
+</main>
+
+<section class="wrap card about">
+  <h2>Read this before trusting a score</h2>
+  <ul>
+    <li>No AI detector is reliable enough to prove anything. This one combines open research methods
+      (<a href="https://arxiv.org/abs/2401.12070">Binoculars</a>, writing-style features and a classifier retrained every month).</li>
+    <li>It is <strong>not</strong> Turnitin and cannot predict what Turnitin will report.</li>
+    <li>Formal, non-native or heavily edited human writing is often flagged by mistake. Short texts are unreliable.</li>
+  </ul>
+  <p id="model-info" class="muted small"></p>
+</section>
+
+<footer class="wrap muted small">
+  <a id="repo-link" href="#">Source code &amp; accuracy reports</a>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

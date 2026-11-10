@@ -1,0 +1,61 @@
+# Builds the website (converting the language models on first run) and publishes it to GitHub Pages.
+# Runs on every push to main, after each retrain, and on demand from the Actions tab.
+name: deploy-pages
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [retrain]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  OBSERVER_MODEL: ${{ vars.OBSERVER_MODEL || 'HuggingFaceTB/SmolLM2-135M' }}
+  PERFORMER_MODEL: ${{ vars.PERFORMER_MODEL || 'HuggingFaceTB/SmolLM2-135M-Instruct' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore converted model
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: site/models
+          key: onnx-${{ env.OBSERVER_MODEL }}-${{ env.PERFORMER_MODEL }}-${{ hashFiles('scripts/export_models.py') }}
+      - name: Convert models for the browser (first run, or after changing models)
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers onnx onnxruntime
+          python scripts/export_models.py --out site/models
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
